@@ -186,7 +186,8 @@ def main():
 
     # Prepare model
     cache_dir = args.cache_dir if args.cache_dir else os.path.join(PYTORCH_PRETRAINED_BERT_CACHE, 'distributed_{}'.format(args.local_rank))
-    model = FusionBert(args.bert_model)
+    config = BertConfig(os.path.join(args.bert_model, 'bert_config.json'))
+    model = FusionBert(args.bert_model, config)
     if args.fp16:
         model.half()
     model.to(device)
@@ -303,7 +304,7 @@ def main():
 
     # Load a trained model and config that you have fine-tuned
     config = BertConfig(output_config_file)
-    model = FusionBert(config)
+    model = FusionBert(config=config)
     model.load_state_dict(torch.load(output_model_file))
         # model = BertForSequenceClassification.from_pretrained(args.bert_model, num_labels=num_labels)
     model.to(device)
@@ -373,4 +374,4 @@ def main():
                 writer.write("%s = %s\n" % (key, str(result[key])))
 
 if __name__ == "__main__":
-    main
+    main()
