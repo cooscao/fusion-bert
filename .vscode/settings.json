@@ -1,0 +1,7 @@
+{
+    "python.pythonPath": "/Users/cao/miniconda3/envs/torch4/bin/python",
+    "python.dataScience.jupyterServerURI": "local",
+    "python.linting.enabled": true,
+    "python.linting.flake8Enabled": false,
+    "python.linting.pylintEnabled": true
+}
