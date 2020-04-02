@@ -18,18 +18,18 @@ from pytorch_pretrained_bert.modeling import BertPreTrainedModel, BertModel
 logger = logging.getLogger(__name__)
 
 
-class FusionBertModule(nn.Module):
+class FusionBertModule(BertPreTrainedModel):
     """
     when config.output_hidden_states=True,return last hidden output
     (batch_size, sequence_length, hidden_size)
     """
-    def __init__(self, model_path=None,config=None):
-        super(FusionBertModule, self).__init__()
-        self.bert = BertModel.from_pretrained(model_path) if model_path else BertModel(config)
+    def __init__(self, config):
+        super(FusionBertModule, self).__init__(config)
+        self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         #self.pooler_mode = config.pooler_mode
         #self.classifier = nn.Linear(config.hidden_size, config.num_labels)
-        # self.apply(self.init_bert_weights)
+        self.apply(self.init_bert_weights)
 
     def forward(self, input_ids, segment_ids=None, input_mask=None, sep_idx=-1):
         outputs = self.bert(input_ids, segment_ids, input_mask, output_all_encoded_layers=False)
@@ -50,7 +50,7 @@ class FusionBert(nn.Module):
     def __init__(self, model_path=None, config=None):
         super(FusionBert, self).__init__()
         self.num_labels = 2
-        self.bert_module = FusionBertModule(model_path, config)
+        self.bert_module = FusionBertModule.from_pretrained(model_path) if model_path else FusionBertModule(config)
         self.linear1 = nn.Linear(config.hidden_size, self.num_labels)
         self.linear2 = nn.Linear(config.hidden_size * 4, config.hidden_size)
 
