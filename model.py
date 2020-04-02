@@ -56,7 +56,7 @@ class FusionBert(nn.Module):
 
     def forward(self, x_input_ids, x_segment_ids, x_input_mask,
                       y_input_ids, y_segment_ids, y_input_mask,
-                      xy_input_ids, xy_segment_ids, xy_input_mask, labels):
+                      xy_input_ids, xy_segment_ids, xy_input_mask, labels=None):
         x_output = self.bert_module(x_input_ids, x_segment_ids, x_input_mask)
         y_output = self.bert_module(y_input_ids, y_segment_ids, y_input_mask)
         abs_output = torch.abs(x_output - y_output)

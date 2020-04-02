@@ -241,9 +241,6 @@ def main():
                              warmup=args.warmup_proportion,
                              t_total=num_train_optimization_steps)
 
-    global_step = 0
-    nb_tr_steps = 0
-    tr_loss = 0
     if args.do_train:
         train(model, processor,optimizer, train_examples, label_list, args, tokenizer,
               device, n_gpu, num_train_optimization_steps, valid=True)
@@ -276,6 +273,9 @@ def main():
 
 def train(model, processor, optimizer, train_examples, label_list, args, tokenizer, device, n_gpu, num_train_optimization_steps,valid=True):
     # model.train()
+    global_step = 0
+    nb_tr_steps = 0
+    tr_loss = 0
     train_features = convert_examples_to_features(
         train_examples, label_list, args.max_seq_length, tokenizer)
     logger.info("***** Running training *****")
@@ -346,7 +346,7 @@ def train(model, processor, optimizer, train_examples, label_list, args, tokeniz
                         param_group['lr'] = lr_this_step
                 optimizer.step()
                 optimizer.zero_grad()
-                global_step += 1
+                #global_step += 1
         if valid:
             logging.info('Start eval the dev set')
             eval_dataloader = get_dataloader(processor,args, tokenizer,mode='dev')
