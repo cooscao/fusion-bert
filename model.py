@@ -40,6 +40,7 @@ class FusionBertModule(BertPreTrainedModel):
             input_mask_expanded = input_mask.unsqueeze(-1).expand(sequence_output.size()).float()
             sum_embeddings = torch.sum(sequence_output * input_mask_expanded, 1)
             sum_mask = input_mask_expanded.sum(1)
+            sum_mask = torch.clamp(sum_mask, 1e-9)
             mean_pooling_out = sum_embeddings / sum_mask  # [batch_size, hidden_size]
         else:
             mean_pooling_out = self.dropout(pooled_output) #[batch_size, hidden_size]
@@ -51,8 +52,8 @@ class FusionBert(nn.Module):
         super(FusionBert, self).__init__()
         self.num_labels = 2
         self.bert_module = FusionBertModule.from_pretrained(model_path) if model_path else FusionBertModule(config)
-        self.linear1 = nn.Linear(config.hidden_size, self.num_labels)
-        self.linear2 = nn.Linear(config.hidden_size * 4, config.hidden_size)
+        self.linear1 = nn.Linear(config.hidden_size * 3, config.hidden_size)
+        self.linear2 = nn.Linear(config.hidden_size, self.num_labels)
 
     def forward(self, x_input_ids, x_segment_ids, x_input_mask,
                       y_input_ids, y_segment_ids, y_input_mask,
@@ -60,12 +61,13 @@ class FusionBert(nn.Module):
         x_output = self.bert_module(x_input_ids, x_segment_ids, x_input_mask)
         y_output = self.bert_module(y_input_ids, y_segment_ids, y_input_mask)
         abs_output = torch.abs(x_output - y_output)
-        simanse_embedding = torch.cat((x_output, y_output, abs_output), 1)
+        multi_output = x_output * y_output
+        simanse_embedding = torch.cat((abs_output, multi_output), 1)
         
-        xy_output = self.bert_module(xy_input_ids, xy_segment_ids, xy_input_mask, 0)
+        xy_output = self.bert_module(xy_input_ids, xy_segment_ids, xy_input_mask, sep_idx=0)
         output = torch.cat((xy_output, simanse_embedding), 1) #[batch_size, hidden_size * 4]
-        output = F.relu(self.linear2(output))
-        logits = self.linear1(output)
+        output = F.relu(self.linear1(output))
+        logits = self.linear2(output)
         if labels is not None:
             loss_fct = nn.CrossEntropyLoss()
             loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
