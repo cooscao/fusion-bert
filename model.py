@@ -74,6 +74,3 @@ class FusionBert(nn.Module):
             return loss
         else:
             return logits
-
-
-

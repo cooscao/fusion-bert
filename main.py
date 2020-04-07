@@ -331,6 +331,7 @@ def train(model, processor, optimizer, train_examples, label_list, args, tokeniz
                 optimizer.backward(loss)
             else:
                 loss.backward()
+            logger.info(loss.item())
 
             tr_loss += loss.item()
             nb_tr_examples += input_ids.size(0)
