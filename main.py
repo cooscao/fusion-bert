@@ -15,10 +15,12 @@ import logging
 import random
 import numpy as np
 import torch
+import torch.nn.functional as F
+from collections import defaultdict
 from pprint import pprint
 from model import FusionBert
 from metric import mean_average_precision, mean_reciprocal_rank, accuracy
-from util import InputExample, InputFeatures, TrecProcessor, convert_examples_to_features
+from util import InputExample, InputFeatures, TrecProcessor, convert_examples_to_features, get_datasets
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)
 from torch.utils.data.distributed import DistributedSampler
@@ -246,8 +248,10 @@ def main():
               device, n_gpu, num_train_optimization_steps, valid=True)
 
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        eval_dataloader = get_dataloader(processor, args, tokenizer, 'test')
-        eval(model, eval_dataloader, device)
+        #eval_dataloader = get_dataloader(processor, args, tokenizer, 'test')
+        #eval(model, eval_dataloader, device)
+        test_file = os.path.join(args.data_dir, 'test.tsv')
+        map_eval(test_file, args.max_seq_length, tokenizer, device, model, label_list)
     # save model
         # Save a trained model and the associated configuration
     model_to_save = model.module if hasattr(
@@ -350,8 +354,9 @@ def train(model, processor, optimizer, train_examples, label_list, args, tokeniz
                 #global_step += 1
         if valid:
             logging.info('Start eval the dev set')
-            eval_dataloader = get_dataloader(processor,args, tokenizer,mode='dev')
-            eval(model, eval_dataloader, device)
+            # eval_dataloader = get_dataloader(processor,args, tokenizer,mode='dev')
+            dev_file = os.path.join(args.data_dir, 'dev.tsv')
+            map_eval(dev_file, args.max_seq_length, tokenizer, device, model, label_list)
 
 def eval(model, eval_dataloader, device):
     model.eval()
@@ -431,6 +436,54 @@ def get_dataloader(processor, args, tokenizer, mode='test'):
     eval_dataloader = DataLoader(
         eval_data, sampler=eval_sampler, batch_size=args.eval_batch_size)
     return eval_dataloader
+
+
+
+def map_eval(eval_file, token_length, tokenizer, device, model, label_list):
+    datasets, labels = get_datasets(eval_file) 
+    total_batches = 0
+    total_avp = 0.0
+    total_mrr = 0.0
+    for k, dataset in tqdm(datasets.items(), desc="Eval datasets"):
+        examples = []
+        for i, data in enumerate(dataset):
+            examples.append(InputExample(i, data[0], data[1], '0'))
+        eval_features = convert_examples_to_features(examples, label_list,
+                                                    token_length, tokenizer)
+        all_input_ids = torch.tensor(
+            [f.input_ids for f in eval_features], dtype=torch.long).to(device)
+        all_input_mask = torch.tensor(
+            [f.input_mask for f in eval_features], dtype=torch.long).to(device)
+        all_segment_ids = torch.tensor(
+            [f.segment_ids for f in eval_features], dtype=torch.long).to(device)
+        # all_label_ids = torch.tensor(
+        #   [f.label_id for f in eval_features], dtype=torch.long).to(device)
+        x_input_ids = torch.tensor(
+            [f.input_ids_x for f in eval_features], dtype=torch.long).to(device)
+        x_input_mask = torch.tensor(
+            [f.input_mask_x for f in eval_features], dtype=torch.long).to(device)
+        x_segment_ids = torch.tensor(
+            [f.segment_ids_x for f in eval_features], dtype=torch.long).to(device)
+        y_input_ids = torch.tensor(
+            [f.input_ids_y for f in eval_features], dtype=torch.long).to(device)
+        y_input_mask = torch.tensor(
+            [f.input_mask_y for f in eval_features], dtype=torch.long).to(device)
+        y_segment_ids = torch.tensor(
+            [f.segment_ids_y for f in eval_features], dtype=torch.long).to(device)
+        with torch.no_grad():
+            logits = model(x_input_ids, x_input_mask, x_segment_ids,
+                                y_input_ids, y_input_mask, y_segment_ids,
+                                all_input_ids, all_segment_ids, all_input_mask)
+        score = F.softmax(logits, dim=1)[:, 1].cpu().numpy()
+        label = np.array(list(map(int, labels[k])))
+        # print(score, label)
+        total_avp += mean_average_precision(label, score)
+        total_mrr += mean_reciprocal_rank(label, score)
+        total_batches += 1
+    mAP = total_avp / total_batches
+    mRR = total_mrr / total_batches
+    logger.info("map is : {}, mrr is : {}".format(mAP, mRR))
+
 
 if __name__ == "__main__":
     main()

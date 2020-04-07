@@ -13,6 +13,7 @@ import csv
 import os
 import sys
 import logging
+from collections import defaultdict
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt = '%m/%d/%Y %H:%M:%S',
@@ -225,3 +226,25 @@ def _truncate_seq_pair(tokens_a, tokens_b, max_length):
         else:
             tokens_b.pop()
 
+
+
+def get_datasets(filepath):
+    datasets = []
+    d = defaultdict(list)
+    with open(filepath, 'r', encoding='utf-8') as fr:
+        reader = csv.reader(fr, delimiter='\t')
+        for _, line in enumerate(reader):
+            d[line[0]].append(line[1:])
+    labels = {}
+    datasets = {}
+    for k, v in d.items():
+        # k is the id, v is the dataset
+        dataset = []
+        label = []
+        for _, pair in enumerate(v):
+            dataset.append([k, pair[0]])
+            label.append(pair[-1])
+        datasets[k] = dataset
+        labels[k] = label
+    logging.info("Done with loading eval datasets")
+    return datasets, labels
