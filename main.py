@@ -440,6 +440,7 @@ def get_dataloader(processor, args, tokenizer, mode='test'):
 
 
 def map_eval(eval_file, token_length, tokenizer, device, model, label_list):
+    model.eval()
     datasets, labels = get_datasets(eval_file) 
     total_batches = 0
     total_avp = 0.0
