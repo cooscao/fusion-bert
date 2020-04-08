@@ -1,6 +1,6 @@
+.DS_Store
 base_output1/
 wiki_base_output*/
 mrpc_base_output*/
 __pycache__/
 wikiqa_data/.ipynb_checkpoints/
-.DS_Store

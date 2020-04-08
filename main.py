@@ -20,7 +20,7 @@ from collections import defaultdict
 from pprint import pprint
 from model import FusionBert
 from metric import mean_average_precision, mean_reciprocal_rank, accuracy
-from util import InputExample, InputFeatures, TrecProcessor, MrpcProcessor,convert_examples_to_features, get_datasets
+from util import InputExample, InputFeatures, TrecProcessor, MrpcProcessor, QqpProcessor,convert_examples_to_features, get_datasets
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)
 from torch.utils.data.distributed import DistributedSampler
@@ -130,12 +130,14 @@ def main():
 
     processors = {
         "trec": TrecProcessor,
-        "mrpc": MrpcProcessor
+        "mrpc": MrpcProcessor,
+        "qqp": QqpProcessor
     }
 
     num_labels_task = {
         "trec": 2,
-        "mrpc": 2
+        "mrpc": 2,
+        "qqp": 2
     }
 
     if args.local_rank == -1 or args.no_cuda:
@@ -162,7 +164,6 @@ def main():
     torch.manual_seed(args.seed)
     if n_gpu > 0:
         torch.cuda.manual_seed_all(args.seed)
-
     if not args.do_train and not args.do_eval:
         raise ValueError(
             "At least one of `do_train` or `do_eval` must be True.")
