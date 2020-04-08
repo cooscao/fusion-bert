@@ -3,3 +3,4 @@ wiki_base_output*/
 wiki_base_output2/
 __pycache__/
 wikiqa_data/.ipynb_checkpoints/
+.DS_Store

@@ -20,7 +20,7 @@ from collections import defaultdict
 from pprint import pprint
 from model import FusionBert
 from metric import mean_average_precision, mean_reciprocal_rank, accuracy
-from util import InputExample, InputFeatures, TrecProcessor, convert_examples_to_features, get_datasets
+from util import InputExample, InputFeatures, TrecProcessor, MrpcProcessor,convert_examples_to_features, get_datasets
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)
 from torch.utils.data.distributed import DistributedSampler
@@ -128,11 +128,13 @@ def main():
     args = parser.parse_args()
 
     processors = {
-        "trec": TrecProcessor
+        "trec": TrecProcessor,
+        "mrpc": MrpcProcessor
     }
 
     num_labels_task = {
-        "trec": 2
+        "trec": 2,
+        "mrpc": 2
     }
 
     if args.local_rank == -1 or args.no_cuda:
@@ -248,10 +250,10 @@ def main():
               device, n_gpu, num_train_optimization_steps, valid=True)
 
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        #eval_dataloader = get_dataloader(processor, args, tokenizer, 'test')
-        #eval(model, eval_dataloader, device)
-        test_file = os.path.join(args.data_dir, 'test.tsv')
-        map_eval(test_file, args.max_seq_length, tokenizer, device, model, label_list)
+        eval_dataloader = get_dataloader(processor, args, tokenizer, 'test')
+        eval(model, eval_dataloader, device)
+        #test_file = os.path.join(args.data_dir, 'test.tsv')
+        #map_eval(test_file, args.max_seq_length, tokenizer, device, model, label_list)
     # save model
         # Save a trained model and the associated configuration
     model_to_save = model.module if hasattr(
@@ -268,11 +270,6 @@ def main():
     # model.load_state_dict(torch.load(output_model_file))
     # # model = BertForSequenceClassification.from_pretrained(args.bert_model, num_labels=num_labels)
     # model.to(device)
-
-
-    
-
-        
 
 
 def train(model, processor, optimizer, train_examples, label_list, args, tokenizer, device, n_gpu, num_train_optimization_steps,valid=True):
@@ -354,13 +351,15 @@ def train(model, processor, optimizer, train_examples, label_list, args, tokeniz
                 #global_step += 1
         if valid:
             logging.info('Start eval the dev set')
-            # eval_dataloader = get_dataloader(processor,args, tokenizer,mode='dev')
-            dev_file = os.path.join(args.data_dir, 'dev.tsv')
-            map_eval(dev_file, args.max_seq_length, tokenizer, device, model, label_list)
+            eval_dataloader = get_dataloader(processor,args, tokenizer,mode='dev')
+            eval(model, eval_dataloader, device)
+            #dev_file = os.path.join(args.data_dir, 'dev.tsv')
+            #map_eval(dev_file, args.max_seq_length, tokenizer, device, model, label_list)
 
 def eval(model, eval_dataloader, device):
     model.eval()
-    eval_map, eval_accuracy, eval_mrr = 0., 0., 0.
+    eval_accuracy = 0.
+    #eval_map, eval_accuracy, eval_mrr = 0., 0., 0.
     nb_eval_steps, nb_eval_examples = 0, 0
 
     for batch in tqdm(eval_dataloader, desc="Evaluating"):
@@ -376,25 +375,25 @@ def eval(model, eval_dataloader, device):
         logits = logits.detach().cpu().numpy()
         label_ids = label_ids.to('cpu').numpy()
         tmp_eval_accuracy = accuracy(logits, label_ids)
-        tmp_eval_map = mean_average_precision(label_ids, logits[:,1])
-        tmp_eval_mrr = mean_reciprocal_rank(label_ids, logits[:, 1])
+        #tmp_eval_map = mean_average_precision(label_ids, logits[:,1])
+        #tmp_eval_mrr = mean_reciprocal_rank(label_ids, logits[:, 1])
 
         # eval_loss += tmp_eval_loss.mean().item()
         eval_accuracy += tmp_eval_accuracy
-        eval_map += tmp_eval_map
-        eval_mrr += tmp_eval_mrr
+        #eval_map += tmp_eval_map
+        #eval_mrr += tmp_eval_mrr
 
         nb_eval_examples += input_ids.size(0)
         nb_eval_steps += 1
 
     # eval_loss = eval_loss / nb_eval_steps
     eval_accuracy = eval_accuracy / nb_eval_examples
-    eval_map = eval_map / nb_eval_examples
-    eval_mrr = eval_mrr / nb_eval_examples
+    #eval_map = eval_map / nb_eval_examples
+    #eval_mrr = eval_mrr / nb_eval_examples
     result = {  # 'eval_loss': eval_loss,
-        'eval_accuracy': eval_accuracy,
-        'eval_map': eval_map,
-        'eval_mrr': eval_mrr}
+        'eval_accuracy': eval_accuracy}
+        #'eval_map': eval_map,
+        #'eval_mrr': eval_mrr}
     pprint(result)
 
     
