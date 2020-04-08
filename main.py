@@ -30,6 +30,7 @@ from pytorch_pretrained_bert.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 from pytorch_pretrained_bert.modeling import BertConfig, WEIGHTS_NAME, CONFIG_NAME
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 from pytorch_pretrained_bert.optimization import BertAdam, warmup_linear
+from sklearn.metrics import f1_score
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
@@ -361,6 +362,7 @@ def eval(model, eval_dataloader, device):
     eval_accuracy = 0.
     #eval_map, eval_accuracy, eval_mrr = 0., 0., 0.
     nb_eval_steps, nb_eval_examples = 0, 0
+    preds, labels = [],[]
 
     for batch in tqdm(eval_dataloader, desc="Evaluating"):
         batch = (t.to(device) for t in batch)
@@ -374,6 +376,8 @@ def eval(model, eval_dataloader, device):
 
         logits = logits.detach().cpu().numpy()
         label_ids = label_ids.to('cpu').numpy()
+        preds.extend(np.argmax(logits, 1).tolist())
+        labels.extend(label_ids.tolist())
         tmp_eval_accuracy = accuracy(logits, label_ids)
         #tmp_eval_map = mean_average_precision(label_ids, logits[:,1])
         #tmp_eval_mrr = mean_reciprocal_rank(label_ids, logits[:, 1])
@@ -388,10 +392,12 @@ def eval(model, eval_dataloader, device):
 
     # eval_loss = eval_loss / nb_eval_steps
     eval_accuracy = eval_accuracy / nb_eval_examples
+    eval_f1 = f1_score(np.array(labels), np.array(preds)) 
     #eval_map = eval_map / nb_eval_examples
     #eval_mrr = eval_mrr / nb_eval_examples
     result = {  # 'eval_loss': eval_loss,
-        'eval_accuracy': eval_accuracy}
+        'eval_accuracy': eval_accuracy,
+        'eval_f1_score': eval_f1}
         #'eval_map': eval_map,
         #'eval_mrr': eval_mrr}
     pprint(result)
