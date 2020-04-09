@@ -184,8 +184,9 @@ class QqpProcessor(DataProcessor):
         """Creates examples for the training and dev sets."""
         examples = []
         for (i, line) in enumerate(lines):
-            if i == 0: continue
+            if i == 0 or len(line) != 6: continue
             guid = "%s-%s" % (set_type, i)
+            #print(line)
             text_a = line[3]
             text_b = line[4]
             label = line[5]
@@ -202,6 +203,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
     features = []
     for (_, example) in enumerate(examples):
         tokens_a = tokenizer.tokenize(example.text_a)
+        if not example.text_b: continue
 
         tokens_b = None
         if example.text_b:
