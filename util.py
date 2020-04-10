@@ -330,9 +330,9 @@ def get_datasets(filepath, arr_path):
         label = []
         arr = []
         for _, pair in enumerate(v):
-            dataset.append([k, pair[0]])
-            label.append(pair[-2])
-            arr.append([pair[-1]])
+            dataset.append([k, pair[0][0]])
+            label.append(pair[0][1])
+            arr.append(pair[-1])
 
         datasets[k] = dataset
         labels[k] = label

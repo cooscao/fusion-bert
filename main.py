@@ -257,7 +257,8 @@ def main():
         # eval_dataloader = get_dataloader(processor, args, tokenizer, 'test')
         # eval(model, eval_dataloader, device)
         test_file = os.path.join(args.data_dir, 'test.tsv')
-        map_eval(test_file, args.max_seq_length, tokenizer, device, model, label_list)
+        test_npy = os.path.join(args.data_dir, 'trec_test.npy')
+        map_eval(test_file, test_npy, args.max_seq_length, tokenizer, device, model, label_list)
     # save model
         # Save a trained model and the associated configuration
     model_to_save = model.module if hasattr(
@@ -360,7 +361,8 @@ def train(model, processor, optimizer, train_examples, label_list, args, tokeniz
             # eval_dataloader = get_dataloader(processor,args, tokenizer,mode='dev')
             # eval(model, eval_dataloader, device)
             dev_file = os.path.join(args.data_dir, 'dev.tsv')
-            map_eval(dev_file, args.max_seq_length, tokenizer, device, model, label_list)
+            dev_npy = os.path.join(args.data_dir, 'trec_dev.npy')
+            map_eval(dev_file, dev_npy, args.max_seq_length, tokenizer, device, model, label_list)
 
 def eval(model, eval_dataloader, device):
     model.eval()
