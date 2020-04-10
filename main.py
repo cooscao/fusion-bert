@@ -449,16 +449,17 @@ def get_dataloader(processor, args, tokenizer, mode='test'):
 
 
 
-def map_eval(eval_file, token_length, tokenizer, device, model, label_list):
+def map_eval(eval_file, arr_path, token_length, tokenizer, device, model, label_list):
     model.eval()
-    datasets, labels = get_datasets(eval_file) 
+    datasets, labels, arrs = get_datasets(eval_file, arr_path) 
     total_batches = 0
     total_avp = 0.0
     total_mrr = 0.0
     for k, dataset in tqdm(datasets.items(), desc="Eval datasets"):
         examples = []
+        arr = arrs[k]
         for i, data in enumerate(dataset):
-            examples.append(InputExample(i, data[0], data[1], '0'))
+            examples.append(InputExample(i, data[0], data[1], arr[i][0], arr[i][1], '0'))
         eval_features = convert_examples_to_features(examples, label_list,
                                                     token_length, tokenizer)
         all_input_ids = torch.tensor(

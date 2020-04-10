@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class InputExample(object):
     """A single training/test example for simple sequence classification."""
 
-    def __init__(self, guid, text_a, embeddimng_a, text_b=None, embedding_b=None, label=None):
+    def __init__(self, guid, text_a, text_b=None, embeddimng_a=None, embedding_b=None, label=None):
         """Constructs a InputExample.
 
         Args:
@@ -313,23 +313,29 @@ def _truncate_seq_pair(tokens_a, tokens_b, max_length):
 
 
 
-def get_datasets(filepath):
+def get_datasets(filepath, arr_path):
     datasets = []
     d = defaultdict(list)
+    arr = np.load(arr_path)
     with open(filepath, 'r', encoding='utf-8') as fr:
         reader = csv.reader(fr, delimiter='\t')
-        for _, line in enumerate(reader):
-            d[line[0]].append(line[1:])
+        for idx, line in enumerate(reader):
+            d[line[0]].append([line[1:], arr[idx*2:(idx+1)*2]])
     labels = {}
     datasets = {}
+    arrs = {}
     for k, v in d.items():
         # k is the id, v is the dataset
         dataset = []
         label = []
+        arr = []
         for _, pair in enumerate(v):
             dataset.append([k, pair[0]])
-            label.append(pair[-1])
+            label.append(pair[-2])
+            arr.append([pair[-1]])
+
         datasets[k] = dataset
         labels[k] = label
+        arrs[k] = arr
     logging.info("Done with loading eval datasets")
-    return datasets, labels
+    return datasets, labels, arrs
