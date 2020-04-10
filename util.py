@@ -13,6 +13,7 @@ import csv
 import os
 import sys
 import logging
+import numpy as np
 from collections import defaultdict
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 class InputExample(object):
     """A single training/test example for simple sequence classification."""
 
-    def __init__(self, guid, text_a, text_b=None, label=None):
+    def __init__(self, guid, text_a, embeddimng_a, text_b=None, embedding_b=None, label=None):
         """Constructs a InputExample.
 
         Args:
@@ -39,6 +40,8 @@ class InputExample(object):
         self.guid = guid
         self.text_a = text_a
         self.text_b = text_b
+        self.embeddimng_a = embeddimng_a
+        self.embeddimng_b = embedding_b
         self.label = label
 
 
@@ -46,18 +49,19 @@ class InputFeatures(object):
     """A single set of features of data."""
 
     def __init__(self, input_ids, input_mask, segment_ids, label_id,
-                       input_ids_x, input_mask_x, segment_ids_x,
-                       input_ids_y, input_mask_y, segment_ids_y):
+                       embeddimng_x, embeddimng_y):
         self.input_ids = input_ids
         self.input_mask = input_mask
         self.segment_ids = segment_ids
         self.label_id = label_id
-        self.input_ids_x = input_ids_x
-        self.input_mask_x = input_mask_x
-        self.segment_ids_x = segment_ids_x
-        self.input_ids_y = input_ids_y
-        self.input_mask_y = input_mask_y
-        self.segment_ids_y = segment_ids_y
+        # self.input_ids_x = input_ids_x
+        # self.input_mask_x = input_mask_x
+        # self.segment_ids_x = segment_ids_x
+        # self.input_ids_y = input_ids_y
+        # self.input_mask_y = input_mask_y
+        # self.segment_ids_y = segment_ids_y
+        self.embeddimng_x = embeddimng_x
+        self.embeddimng_y = embeddimng_y
 
 
 class DataProcessor(object):
@@ -74,6 +78,12 @@ class DataProcessor(object):
     def get_labels(self):
         """Gets the list of labels for this data set."""
         raise NotImplementedError()
+
+    @classmethod
+    def _read_npy(cls, input_file):
+        """Read pretrained npy"""
+        arr = np.load(input_file)
+        return arr
 
     @classmethod
     def _read_tsv(cls, input_file, quotechar=None):
@@ -94,33 +104,39 @@ class TrecProcessor(DataProcessor):
     def get_train_examples(self, data_dir):
         """See base class."""
         logger.info("LOOKING AT {}".format(os.path.join(data_dir, "train.tsv")))
+        arr = self._read_npy(os.path.join(data_dir, 'trec_train.npy'))
         return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
+            self._read_tsv(os.path.join(data_dir, "train.tsv")), "train", arr)
 
     def get_dev_examples(self, data_dir):
         """See base class."""
+        arr = self._read_npy(os.path.join(data_dir, 'trec_dev.npy'))
         return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
+            self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev", arr)
 
     def get_test_examples(self, data_dir):
+        arr = self._read_npy(os.path.join(data_dir, 'trec_test.npy'))
         return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, 'test.tsv')), "test"
+            self._read_tsv(os.path.join(data_dir, 'test.tsv')), "test", arr
         )
 
     def get_labels(self):
         """See base class."""
         return ["0", "1"]
 
-    def _create_examples(self, lines, set_type):
+    def _create_examples(self, lines, set_type, arr):
         """Creates examples for the training and dev sets."""
         examples = []
         for (i, line) in enumerate(lines):
             guid = "%s-%s" % (set_type, i)
             text_a = line[0]
             text_b = line[1]
+            embeddimng_a = arr[i*2]
+            embeddimng_b = arr[i*2+1]
             label = line[2]
             examples.append(
-                InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+                InputExample(guid=guid, text_a=text_a, text_b=text_b, 
+                             embeddimng_a=embeddimng_a, embedding_b=embeddimng_b, label=label))
         return examples
 
 
@@ -220,24 +236,24 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         segment_ids = [0] * len(tokens)
 
         # single of x
-        tokens_x = ["[CLS]"] + tokens_a + ["[SEP]"]
-        segment_ids_x = [0] * len(tokens)
-        tokens_y = ["[CLS]"] + tokens_b + ["[SEP]"]
-        segment_ids_y = [0] * len(tokens_y)
+        # tokens_x = ["[CLS]"] + tokens_a + ["[SEP]"]
+        # segment_ids_x = [0] * len(tokens)
+        # tokens_y = ["[CLS]"] + tokens_b + ["[SEP]"]
+        # segment_ids_y = [0] * len(tokens_y)
 
         if tokens_b:
             tokens += tokens_b + ["[SEP]"]
             segment_ids += [1] * (len(tokens_b) + 1)
 
         input_ids = tokenizer.convert_tokens_to_ids(tokens)
-        input_ids_x = tokenizer.convert_tokens_to_ids(tokens_x)
-        input_ids_y = tokenizer.convert_tokens_to_ids(tokens_y)
+        # input_ids_x = tokenizer.convert_tokens_to_ids(tokens_x)
+        # input_ids_y = tokenizer.convert_tokens_to_ids(tokens_y)
 
         # The mask has 1 for real tokens and 0 for padding tokens. Only real
         # tokens are attended to.
         input_mask = [1] * len(input_ids)
-        input_mask_x = [1] * len(input_ids_x)
-        input_mask_y = [1] * len(input_ids_y)
+        # input_mask_x = [1] * len(input_ids_x)
+        # input_mask_y = [1] * len(input_ids_y)
 
         # Zero-pad up to the sequence length.
         padding = [0] * (max_seq_length - len(input_ids))
@@ -245,25 +261,25 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         input_mask += padding
         segment_ids += padding 
         
-        padding_x = [0] * (max_seq_length - len(input_ids_x))
-        input_ids_x += padding_x
-        input_mask_x += padding_x
-        segment_ids_x += padding_x
+        # padding_x = [0] * (max_seq_length - len(input_ids_x))
+        # input_ids_x += padding_x
+        # input_mask_x += padding_x
+        # segment_ids_x += padding_x
 
-        padding_y = [0] * (max_seq_length - len(input_ids_y))
-        input_ids_y += padding_y
-        input_mask_y += padding_y
-        segment_ids_y += padding_y
+        # padding_y = [0] * (max_seq_length - len(input_ids_y))
+        # input_ids_y += padding_y
+        # input_mask_y += padding_y
+        # segment_ids_y += padding_y
 
         assert len(input_ids) == max_seq_length
         assert len(input_mask) == max_seq_length
         assert len(segment_ids) == max_seq_length
-        assert len(input_ids_x) == max_seq_length
-        assert len(input_mask_x) == max_seq_length
-        assert len(segment_ids_x) == max_seq_length
-        assert len(input_ids_y) == max_seq_length
-        assert len(input_mask_y) == max_seq_length
-        assert len(segment_ids_y) == max_seq_length
+        # assert len(input_ids_x) == max_seq_length
+        # assert len(input_mask_x) == max_seq_length
+        # assert len(segment_ids_x) == max_seq_length
+        # assert len(input_ids_y) == max_seq_length
+        # assert len(input_mask_y) == max_seq_length
+        # assert len(segment_ids_y) == max_seq_length
 
         label_id = label_map[example.label]
         
@@ -273,12 +289,9 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
                               input_mask=input_mask,
                               segment_ids=segment_ids,
                               label_id=label_id,
-                              input_ids_x=input_ids_x,
-                              input_mask_x=input_mask_x,
-                              segment_ids_x=segment_ids_x,
-                              input_ids_y=input_ids_y,
-                              input_mask_y=input_mask_y,
-                              segment_ids_y=segment_ids_y))
+                              embeddimng_x=example.embeddimng_a,
+                              embeddimng_y=example.embeddimng_b
+                              ))
     return features
 
 

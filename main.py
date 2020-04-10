@@ -18,7 +18,7 @@ import torch
 import torch.nn.functional as F
 from collections import defaultdict
 from pprint import pprint
-from model import FusionBert
+from model import FusionBert, FusionSentenceBert
 from metric import mean_average_precision, mean_reciprocal_rank, accuracy
 from util import InputExample, InputFeatures, TrecProcessor, MrpcProcessor, QqpProcessor,convert_examples_to_features, get_datasets
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
@@ -199,7 +199,7 @@ def main():
     cache_dir = args.cache_dir if args.cache_dir else os.path.join(
         PYTORCH_PRETRAINED_BERT_CACHE, 'distributed_{}'.format(args.local_rank))
     config = BertConfig(os.path.join(args.bert_model, 'bert_config.json'))
-    model = FusionBert(args.bert_model, config)
+    model = FusionSentenceBert(args.bert_model, config)
     if args.fp16:
         model.half()
     model.to(device)
@@ -252,10 +252,10 @@ def main():
               device, n_gpu, num_train_optimization_steps, valid=True)
 
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        eval_dataloader = get_dataloader(processor, args, tokenizer, 'test')
-        eval(model, eval_dataloader, device)
-        #test_file = os.path.join(args.data_dir, 'test.tsv')
-        #map_eval(test_file, args.max_seq_length, tokenizer, device, model, label_list)
+        # eval_dataloader = get_dataloader(processor, args, tokenizer, 'test')
+        # eval(model, eval_dataloader, device)
+        test_file = os.path.join(args.data_dir, 'test.tsv')
+        map_eval(test_file, args.max_seq_length, tokenizer, device, model, label_list)
     # save model
         # Save a trained model and the associated configuration
     model_to_save = model.module if hasattr(
@@ -293,21 +293,25 @@ def train(model, processor, optimizer, train_examples, label_list, args, tokeniz
         [f.segment_ids for f in train_features], dtype=torch.long)
     all_label_ids = torch.tensor(
         [f.label_id for f in train_features], dtype=torch.long)
-    x_input_ids = torch.tensor(
-        [f.input_ids_x for f in train_features], dtype=torch.long)
-    x_input_mask = torch.tensor(
-        [f.input_mask_x for f in train_features], dtype=torch.long)
-    x_segment_ids = torch.tensor(
-        [f.segment_ids_x for f in train_features], dtype=torch.long)
-    y_input_ids = torch.tensor(
-        [f.input_ids_y for f in train_features], dtype=torch.long)
-    y_input_mask = torch.tensor(
-        [f.input_mask_y for f in train_features], dtype=torch.long)
-    y_segment_ids = torch.tensor(
-        [f.segment_ids_y for f in train_features], dtype=torch.long)
+    # x_input_ids = torch.tensor(
+    #     [f.input_ids_x for f in train_features], dtype=torch.long)
+    # x_input_mask = torch.tensor(
+    #     [f.input_mask_x for f in train_features], dtype=torch.long)
+    # x_segment_ids = torch.tensor(
+    #     [f.segment_ids_x for f in train_features], dtype=torch.long)
+    # y_input_ids = torch.tensor(
+    #     [f.input_ids_y for f in train_features], dtype=torch.long)
+    # y_input_mask = torch.tensor(
+    #     [f.input_mask_y for f in train_features], dtype=torch.long)
+    # y_segment_ids = torch.tensor(
+    #     [f.segment_ids_y for f in train_features], dtype=torch.long)
+    # embedding
+    embedding_xs = torch.tensor(
+        [f.embeddimng_x.tolist() for f in train_features], dtype=torch.float)
+    embedding_ys = torch.tensor(
+        [f.embeddimng_y.tolist() for f in train_features], dtype=torch.float)
     train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids,
-                               x_input_ids, x_input_mask, x_segment_ids,
-                               y_input_ids, y_input_mask, y_segment_ids)
+                               embedding_xs, embedding_ys)
     if args.local_rank == -1:
         train_sampler = RandomSampler(train_data)
     else:
@@ -321,10 +325,8 @@ def train(model, processor, optimizer, train_examples, label_list, args, tokeniz
         nb_tr_examples, nb_tr_steps = 0, 0
         for step, batch in enumerate(tqdm(train_dataloader, desc="Iteration")):
             batch = tuple(t.to(device) for t in batch)
-            input_ids, input_mask, segment_ids, label_ids, x_input_ids, x_input_mask, x_segment_ids, y_input_ids, y_input_mask, y_segment_ids = batch
-            loss = model(x_input_ids, x_input_mask, x_segment_ids,
-                         y_input_ids, y_input_mask, y_segment_ids,
-                         input_ids, segment_ids, input_mask, label_ids)
+            input_ids, input_mask, segment_ids, label_ids, embedding_x, embedding_y = batch
+            loss = model(input_ids, segment_ids, input_mask, embedding_x, embedding_y, label_ids)
             if n_gpu > 1:
                 loss = loss.mean()  # mean() to average on multi-gpu.
             if args.gradient_accumulation_steps > 1:
@@ -353,10 +355,10 @@ def train(model, processor, optimizer, train_examples, label_list, args, tokeniz
                 #global_step += 1
         if valid:
             logging.info('Start eval the dev set')
-            eval_dataloader = get_dataloader(processor,args, tokenizer,mode='dev')
-            eval(model, eval_dataloader, device)
-            #dev_file = os.path.join(args.data_dir, 'dev.tsv')
-            #map_eval(dev_file, args.max_seq_length, tokenizer, device, model, label_list)
+            # eval_dataloader = get_dataloader(processor,args, tokenizer,mode='dev')
+            # eval(model, eval_dataloader, device)
+            dev_file = os.path.join(args.data_dir, 'dev.tsv')
+            map_eval(dev_file, args.max_seq_length, tokenizer, device, model, label_list)
 
 def eval(model, eval_dataloader, device):
     model.eval()
@@ -465,22 +467,12 @@ def map_eval(eval_file, token_length, tokenizer, device, model, label_list):
             [f.segment_ids for f in eval_features], dtype=torch.long).to(device)
         # all_label_ids = torch.tensor(
         #   [f.label_id for f in eval_features], dtype=torch.long).to(device)
-        x_input_ids = torch.tensor(
-            [f.input_ids_x for f in eval_features], dtype=torch.long).to(device)
-        x_input_mask = torch.tensor(
-            [f.input_mask_x for f in eval_features], dtype=torch.long).to(device)
-        x_segment_ids = torch.tensor(
-            [f.segment_ids_x for f in eval_features], dtype=torch.long).to(device)
-        y_input_ids = torch.tensor(
-            [f.input_ids_y for f in eval_features], dtype=torch.long).to(device)
-        y_input_mask = torch.tensor(
-            [f.input_mask_y for f in eval_features], dtype=torch.long).to(device)
-        y_segment_ids = torch.tensor(
-            [f.segment_ids_y for f in eval_features], dtype=torch.long).to(device)
+        embedding_x = torch.tensor(
+            [f.embeddimng_x.tolist() for f in eval_features], dtype=torch.float).to(device)
+        embedding_y = torch.tensor(
+            [f.embeddimng_y.tolist() for f in eval_features], dtype=torch.float).to(device)
         with torch.no_grad():
-            logits = model(x_input_ids, x_input_mask, x_segment_ids,
-                                y_input_ids, y_input_mask, y_segment_ids,
-                                all_input_ids, all_segment_ids, all_input_mask)
+            logits = model(all_input_ids, all_segment_ids, all_input_mask, embedding_x, embedding_y)
         score = F.softmax(logits, dim=1)[:, 1].cpu().numpy()
         label = np.array(list(map(int, labels[k])))
         # print(score, label)
