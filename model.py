@@ -78,7 +78,7 @@ class FusionBert(nn.Module):
 class FusionSentenceBert(nn.Module):
     def __init__(self, model_path=None, config=None):
         super(FusionSentenceBert, self).__init__()
-        self.num_lables = 2
+        self.num_labels = 2
         self.bert_module = FusionBertModule.from_pretrained(model_path) if model_path else FusionBertModule(config)
         self.linear1 = nn.Linear(config.hidden_size * 3, config.hidden_size)
         self.linear2 = nn.Linear(config.hidden_size, self.num_labels)
@@ -87,7 +87,7 @@ class FusionSentenceBert(nn.Module):
         abs_output = torch.abs(embedding_x - embedding_y)
         multi_output = embedding_y * embedding_y
         simanse_embedding = torch.cat((abs_output, multi_output), 1)
-        output = self.bert_module(input_ids, segment_ids, input_mask, sep_id=0)
+        output = self.bert_module(input_ids, segment_ids, input_mask, sep_idx=0)
         output = torch.cat((output, simanse_embedding), 1)
         output = F.relu(self.linear1(output))
         logits = self.linear2(output)
