@@ -20,7 +20,7 @@ from collections import defaultdict
 from pprint import pprint
 from model import FusionBert
 from metric import mean_average_precision, mean_reciprocal_rank, accuracy
-from util import InputExample, InputFeatures, TrecProcessor, MrpcProcessor, QqpProcessor,convert_examples_to_features, get_datasets
+from util import InputExample, InputFeatures, TrecProcessor, MrpcProcessor, QqpProcessor,LcqmcProcessor, convert_examples_to_features, get_datasets
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)
 from torch.utils.data.distributed import DistributedSampler
@@ -131,13 +131,15 @@ def main():
     processors = {
         "trec": TrecProcessor,
         "mrpc": MrpcProcessor,
-        "qqp": QqpProcessor
+        "qqp": QqpProcessor,
+        "lcqmc": LcqmcProcessor
     }
 
     num_labels_task = {
         "trec": 2,
         "mrpc": 2,
-        "qqp": 2
+        "qqp": 2,
+        "lcqpc": 2
     }
 
     if args.local_rank == -1 or args.no_cuda:
@@ -248,14 +250,16 @@ def main():
                              t_total=num_train_optimization_steps)
 
     if args.do_train:
-        train(model, processor,optimizer, train_examples, label_list, args, tokenizer,
+        train(model, processor,task_name, optimizer, train_examples, label_list, args, tokenizer,
               device, n_gpu, num_train_optimization_steps, valid=True)
 
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        eval_dataloader = get_dataloader(processor, args, tokenizer, 'test')
-        eval(model, eval_dataloader, device)
-        #test_file = os.path.join(args.data_dir, 'test.tsv')
-        #map_eval(test_file, args.max_seq_length, tokenizer, device, model, label_list)
+        if task_name in ['lcpmc', 'mrpc', 'qqp']:
+            eval_dataloader = get_dataloader(processor, args, tokenizer, 'test')
+            eval(model, eval_dataloader, device)
+        else:
+            test_file = os.path.join(args.data_dir, 'test.tsv')
+            map_eval(test_file, args.max_seq_length, tokenizer, device, model, label_list)
     # save model
         # Save a trained model and the associated configuration
     model_to_save = model.module if hasattr(
@@ -274,7 +278,7 @@ def main():
     # model.to(device)
 
 
-def train(model, processor, optimizer, train_examples, label_list, args, tokenizer, device, n_gpu, num_train_optimization_steps,valid=True):
+def train(model, processor, task_name, optimizer, train_examples, label_list, args, tokenizer, device, n_gpu, num_train_optimization_steps,valid=True):
     # model.train()
     global_step = 0
     nb_tr_steps = 0
@@ -353,10 +357,12 @@ def train(model, processor, optimizer, train_examples, label_list, args, tokeniz
                 #global_step += 1
         if valid:
             logging.info('Start eval the dev set')
-            eval_dataloader = get_dataloader(processor,args, tokenizer,mode='dev')
-            eval(model, eval_dataloader, device)
-            #dev_file = os.path.join(args.data_dir, 'dev.tsv')
-            #map_eval(dev_file, args.max_seq_length, tokenizer, device, model, label_list)
+            if task_name in ['lcqpc', 'mrpc', 'qqp']:
+                eval_dataloader = get_dataloader(processor,args, tokenizer,mode='dev')
+                eval(model, eval_dataloader, device)
+            else:
+                dev_file = os.path.join(args.data_dir, 'dev.tsv')
+                map_eval(dev_file, args.max_seq_length, tokenizer, device, model, label_list)
 
 def eval(model, eval_dataloader, device):
     model.eval()
