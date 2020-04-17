@@ -139,7 +139,7 @@ def main():
         "trec": 2,
         "mrpc": 2,
         "qqp": 2,
-        "lcqpc": 2
+        "lcqmc": 2
     }
 
     if args.local_rank == -1 or args.no_cuda:
@@ -357,7 +357,7 @@ def train(model, processor, task_name, optimizer, train_examples, label_list, ar
                 #global_step += 1
         if valid:
             logging.info('Start eval the dev set')
-            if task_name in ['lcqpc', 'mrpc', 'qqp']:
+            if task_name in ['lcqmc', 'mrpc', 'qqp']:
                 eval_dataloader = get_dataloader(processor,args, tokenizer,mode='dev')
                 eval(model, eval_dataloader, device)
             else:

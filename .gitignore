@@ -2,6 +2,7 @@
 base_output1/
 wiki_base_output*/
 mrpc_base_output*/
+lrqmc_bert_output/
 __pycache__/
 wikiqa_data/.ipynb_checkpoints/
 qqp_base_output*/
