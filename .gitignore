@@ -6,3 +6,6 @@ lrqmc_bert_output/
 __pycache__/
 wikiqa_data/.ipynb_checkpoints/
 qqp_base_output*/
+fusion_cmed_output/
+cache_cmed/
+trec_large_output/

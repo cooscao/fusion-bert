@@ -43,6 +43,9 @@ logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(messa
 logger = logging.getLogger(__name__)
 
 
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+
+
 class InputExample(object):
     """A single training/test example for simple sequence classification."""
 

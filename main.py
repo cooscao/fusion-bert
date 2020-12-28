@@ -13,14 +13,16 @@ import os
 import argparse
 import logging
 import random
+import json
 import numpy as np
 import torch
 import torch.nn.functional as F
+import pickle
 from collections import defaultdict
 from pprint import pprint
 from model import FusionBert
 from metric import mean_average_precision, mean_reciprocal_rank, accuracy
-from util import InputExample, InputFeatures, TrecProcessor, MrpcProcessor, QqpProcessor,LcqmcProcessor, convert_examples_to_features, get_datasets
+from util import InputExample, InputFeatures, TrecProcessor, NlpccProcessor, MrpcProcessor, QqpProcessor,LcqmcProcessor, convert_examples_to_features, get_datasets, CmedQAProcess
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)
 from torch.utils.data.distributed import DistributedSampler
@@ -31,6 +33,8 @@ from pytorch_pretrained_bert.modeling import BertConfig, WEIGHTS_NAME, CONFIG_NA
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 from pytorch_pretrained_bert.optimization import BertAdam, warmup_linear
 from sklearn.metrics import f1_score
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
@@ -132,14 +136,18 @@ def main():
         "trec": TrecProcessor,
         "mrpc": MrpcProcessor,
         "qqp": QqpProcessor,
-        "lcqmc": LcqmcProcessor
+        "lcqmc": LcqmcProcessor,
+        "nlpcc": NlpccProcessor,
+        "cmedqa": CmedQAProcess
     }
 
     num_labels_task = {
         "trec": 2,
         "mrpc": 2,
         "qqp": 2,
-        "lcqmc": 2
+        "lcqmc": 2,
+        "nlpcc": 2,
+        "cmedqa": 2
     }
 
     if args.local_rank == -1 or args.no_cuda:
@@ -181,7 +189,7 @@ def main():
     if task_name not in processors:
         raise ValueError("Task not found: %s" % (task_name))
 
-    processor = processors[task_name]()
+    processor = processors[task_name](args.data_dir)
     num_labels = num_labels_task[task_name]
     label_list = processor.get_labels()
 
@@ -191,17 +199,20 @@ def main():
     train_examples = None
     num_train_optimization_steps = None
     if args.do_train:
-        train_examples = processor.get_train_examples(args.data_dir)
+        train_examples = processor.get_train_examples()
         num_train_optimization_steps = int(
             len(train_examples) / args.train_batch_size / args.gradient_accumulation_steps) * args.num_train_epochs
         if args.local_rank != -1:
             num_train_optimization_steps = num_train_optimization_steps // torch.distributed.get_world_size()
+            
+    logger.info("loading train data done.....")
 
     # Prepare model
     cache_dir = args.cache_dir if args.cache_dir else os.path.join(
         PYTORCH_PRETRAINED_BERT_CACHE, 'distributed_{}'.format(args.local_rank))
     config = BertConfig(os.path.join(args.bert_model, 'bert_config.json'))
     model = FusionBert(args.bert_model, config)
+    logger.info("loading model done.....")
     if args.fp16:
         model.half()
     model.to(device)
@@ -250,11 +261,12 @@ def main():
                              t_total=num_train_optimization_steps)
 
     if args.do_train:
+        logger.info("Start training.....")
         train(model, processor,task_name, optimizer, train_examples, label_list, args, tokenizer,
               device, n_gpu, num_train_optimization_steps, valid=True)
 
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        if task_name in ['lcpmc', 'mrpc', 'qqp']:
+        if task_name in ['lcpmc', 'mrpc', 'qqp', 'cmedqa']:
             eval_dataloader = get_dataloader(processor, args, tokenizer, 'test')
             eval(model, eval_dataloader, device)
         else:
@@ -278,13 +290,21 @@ def main():
     # model.to(device)
 
 
-def train(model, processor, task_name, optimizer, train_examples, label_list, args, tokenizer, device, n_gpu, num_train_optimization_steps,valid=True):
+def train(model, processor, task_name, optimizer, train_examples, label_list, args, tokenizer, device, n_gpu, num_train_optimization_steps,valid=False):
     # model.train()
     global_step = 0
     nb_tr_steps = 0
     tr_loss = 0
-    train_features = convert_examples_to_features(
-        train_examples, label_list, args.max_seq_length, tokenizer)
+    # train_features = convert_examples_to_features(
+    #    train_examples, label_list, args.max_seq_length, tokenizer)
+    if os.path.exists('./cache_cmed/train_features.pkl'):
+            with open('./cache_cmed/train_features.pkl', 'rb') as f:
+                train_features = pickle.load(f)[:50000]
+    else:
+        train_features = convert_examples_to_features(
+            train_examples, label_list, args.max_seq_length, tokenizer)
+        with open('./cache_cmed/train_features.pkl', 'wb') as f:
+            pickle.dump(train_features, f)
     logger.info("***** Running training *****")
     logger.info("  Num examples = %d", len(train_examples))
     logger.info("  Batch size = %d", args.train_batch_size)
@@ -357,7 +377,7 @@ def train(model, processor, task_name, optimizer, train_examples, label_list, ar
                 #global_step += 1
         if valid:
             logging.info('Start eval the dev set')
-            if task_name in ['lcqmc', 'mrpc', 'qqp']:
+            if task_name in ['lcqmc', 'mrpc', 'qqp', "cmedqa"]:
                 eval_dataloader = get_dataloader(processor,args, tokenizer,mode='dev')
                 eval(model, eval_dataloader, device)
             else:
@@ -412,8 +432,9 @@ def eval(model, eval_dataloader, device):
     
 
 def get_dataloader(processor, args, tokenizer, mode='test'):
-    eval_examples = processor.get_test_examples(args.data_dir) if mode=='test' \
-        else processor.get_dev_examples(args.data_dir)
+    eval_examples = processor.get_test_examples() if mode=='test' \
+        else processor.get_dev_examples()
+    eval_examples = eval_examples[:1000]
     label_list = processor.get_labels()
     eval_features = convert_examples_to_features(
         eval_examples, label_list, args.max_seq_length, tokenizer)
@@ -457,6 +478,7 @@ def map_eval(eval_file, token_length, tokenizer, device, model, label_list):
     total_batches = 0
     total_avp = 0.0
     total_mrr = 0.0
+    # scores, labels = [], []
     for k, dataset in tqdm(datasets.items(), desc="Eval datasets"):
         examples = []
         for i, data in enumerate(dataset):
@@ -490,12 +512,17 @@ def map_eval(eval_file, token_length, tokenizer, device, model, label_list):
         score = F.softmax(logits, dim=1)[:, 1].cpu().numpy()
         label = np.array(list(map(int, labels[k])))
         # print(score, label)
+# scores.append(score)
+#      labels.append(label)
         total_avp += mean_average_precision(label, score)
         total_mrr += mean_reciprocal_rank(label, score)
         total_batches += 1
     mAP = total_avp / total_batches
     mRR = total_mrr / total_batches
     logger.info("map is : {}, mrr is : {}".format(mAP, mRR))
+    data = {'map': mAP, 'mrr': mRR}
+    with open('./result.json', 'w', encoding='utf-8') as f:
+	    json.dump(data, f)
 
 
 if __name__ == "__main__":

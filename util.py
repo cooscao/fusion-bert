@@ -13,6 +13,10 @@ import csv
 import os
 import sys
 import logging
+import pickle
+import pandas as pd
+import random
+from tqdm import tqdm
 from collections import defaultdict
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
@@ -123,6 +127,41 @@ class TrecProcessor(DataProcessor):
                 InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
 
+class NlpccProcessor(DataProcessor):
+    """Processor for the TREC data set (GLUE version)."""
+
+    def get_train_examples(self, data_dir):
+        """See base class."""
+        logger.info("LOOKING AT {}".format(os.path.join(data_dir, "train.tsv")))
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
+
+    def get_dev_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
+
+    def get_test_examples(self, data_dir):
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, 'test.tsv')), "test"
+        )
+
+    def get_labels(self):
+        """See base class."""
+        return ["0", "1"]
+
+    def _create_examples(self, lines, set_type):
+        """Creates examples for the training and dev sets."""
+        examples = []
+        for (i, line) in enumerate(lines):
+            if i == 0: continue
+            guid = "%s-%s" % (set_type, i)
+            text_a = line[1]
+            text_b = line[2]
+            label = line[3]
+            examples.append(
+                InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+        return examples
 
 class LcqmcProcessor(DataProcessor):
     def get_train_examples(self, data_dir):
@@ -228,6 +267,127 @@ class QqpProcessor(DataProcessor):
             examples.append(
                 InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
+    
+    
+class CmedQAProcess(object):
+    def __init__(self, dataset_path, cache='./cache_cmed/', neg_num=10):
+        # self.dataset_path = dataset_path
+        self.question_path = os.path.join(dataset_path, 'question.csv')
+        self.answer_path = os.path.join(dataset_path, 'answer.csv')
+        logger.info("Reading the df from train and dev csv....")
+        self.question_df = pd.read_csv(self.question_path, sep=',', encoding='utf-8')
+        self.answer_df = pd.read_csv(self.answer_path, sep=',', encoding='utf-8')
+        self.train_path = os.path.join(dataset_path, 'train_candidates.txt')
+        self.dev_path = os.path.join(dataset_path, 'dev_candidates.txt')
+        self.test_path = os.path.join(dataset_path, 'test_candidates.txt')
+        self.neg_num = neg_num
+        self.cache = cache
+        # self.cache = os.path.join(dataset_path, 'cache_cmed')
+        if not os.path.exists(self.cache):
+            os.makedirs(self.cache)
+        
+
+    def get_train_examples(self):
+        cache_path = os.path.join(self.cache, "train.pkl")
+        if os.path.exists(cache_path):
+            logger.info("Loading train examples from cache..")
+            with open(cache_path, 'rb') as fr:
+                train_examples = pickle.load(fr)
+        else:
+            logger.info("Loading train examples from file..")
+            train_examples = self._create_examples(self.train_path)
+            logger.info("Saving train examples to cache...")
+            with open(cache_path, 'wb') as fw:
+                pickle.dump(train_examples, fw)
+        return train_examples
+
+    def get_dev_examples(self):
+        cache_path = os.path.join(self.cache, "dev.pkl")
+        if os.path.exists(cache_path):
+            logger.info("Loading dev examples from cache..")
+            with open(cache_path, 'rb') as fr:
+                dev_examples = pickle.load(fr)
+        else:
+            logger.info("Loading dev examples from file..")
+            dev_examples = self._create_dev_examples(self.dev_path)
+            logger.info("Saving dev examples to cache...")
+            with open(cache_path, 'wb') as fw:
+                pickle.dump(dev_examples, fw)
+        return dev_examples
+    
+    def get_test_examples(self):
+        cache_path = os.path.join(self.cache, "dev.pkl")
+        if os.path.exists(cache_path):
+            logger.info("Loading dev examples from cache..")
+            with open(cache_path, 'rb') as fr:
+                dev_examples = pickle.load(fr)
+        else:
+            logger.info("Loading dev examples from file..")
+            dev_examples = self._create_dev_examples(self.test_path)
+            logger.info("Saving dev examples to cache...")
+            with open(cache_path, 'wb') as fw:
+                pickle.dump(dev_examples, fw)
+        return dev_examples
+
+    def get_labels(self):
+        return ["0", "1"]
+
+    def _create_examples(self, candidate_path):
+        logger.info('loading examples from {}'.format(candidate_path))
+        examples = []
+        df = pd.read_csv(candidate_path, sep=',')
+        group_df = df.groupby('question_id')
+        group_num = 0
+        for group_id, group_data in tqdm(group_df):
+            question = self.question_df[self.question_df['question_id'] == group_id]['content'].values[0]
+            pos_ids = group_data['pos_ans_id'].drop_duplicates().values
+            neg_ids = random.sample(group_data['neg_ans_id'].values.tolist(), self.neg_num)
+            # 加入正样本
+            for pos_id in pos_ids:
+                guid = "%s-%s" % (str(group_id), str(pos_id))
+                text_a = question
+                text_b = self.answer_df[self.answer_df['ans_id'] == pos_id]['content'].values[0]
+                label = "1"
+                examples.append(
+                InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+            )
+            # 加入负样本
+            for neg_id in neg_ids:
+                guid = "%s-%s" % (str(group_id), str(neg_id))
+                text_a = question
+                text_b = self.answer_df[self.answer_df['ans_id'] == neg_id]['content'].values[0]
+                label = "0"
+                examples.append(
+                InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+            )
+            group_num += 1
+            if group_num >= 20000:
+                break
+        return examples
+            # 加入负样本
+
+    def _create_dev_examples(self, candidate_path):
+        logger.info('loading examples from {}'.format(candidate_path))
+        examples = []
+        df = pd.read_csv(candidate_path, sep=',')
+        group_df = df.groupby('question_id')
+        # group_num = 0
+        for group_id, group_data in tqdm(group_df):
+            question = self.question_df[self.question_df['question_id'] == group_id]['content'].values[0]
+            #pos_ids = group_data['pos_ans_id'].drop_duplicates().values
+            #neg_ids = random.sample(group_data['neg_ans_id'].values.tolist(), self.neg_num)
+            ans_ids = group_data['ans_id'].values
+            labels = group_data['label'].values
+            # 加入正样本
+            for ans_id, label in zip(ans_ids, labels):
+                guid = "%s-%s" % (str(group_id), str(ans_id))
+                text_a = question
+                text_b = self.answer_df[self.answer_df['ans_id'] == ans_id]['content'].values[0]
+                label = str(label)
+                examples.append(
+                InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+            )
+        return examples
 
 
 def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer):
@@ -236,7 +396,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
     label_map = {label : i for i, label in enumerate(label_list)}
 
     features = []
-    for (_, example) in enumerate(examples):
+    for (_, example) in tqdm(enumerate(examples)):
         tokens_a = tokenizer.tokenize(example.text_a)
         if not example.text_b: continue
 
@@ -335,12 +495,13 @@ def _truncate_seq_pair(tokens_a, tokens_b, max_length):
 
 
 
-def get_datasets(filepath):
+def get_datasets(filepath, skip_header=True):
     datasets = []
     d = defaultdict(list)
     with open(filepath, 'r', encoding='utf-8') as fr:
         reader = csv.reader(fr, delimiter='\t')
-        for _, line in enumerate(reader):
+        for idx, line in enumerate(reader):
+            if skip_header and idx == 0: continue
             d[line[0]].append(line[1:])
     labels = {}
     datasets = {}
