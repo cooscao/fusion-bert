@@ -1,8 +1,0 @@
-{
-    "python.pythonPath": "/Users/cao/miniconda3/bin/python",
-    "python.dataScience.jupyterServerURI": "local",
-    "python.linting.enabled": true,
-    "python.linting.flake8Enabled": false,
-    "python.linting.pylintEnabled": true,
-    "jupyter.jupyterServerType": "local"
-}
